@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budgeting AI — Assistente Financeiro</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        header {
+            text-align: center;
+            padding: 2rem 1rem 1rem;
+        }
+
+        header h1 {
+            font-size: 1.8rem;
+            color: #38bdf8;
+        }
+
+        header p {
+            color: #94a3b8;
+            margin-top: 0.4rem;
+            font-size: 0.95rem;
+        }
+
+        main {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 1rem;
+            display: grid;
+            gap: 1.25rem;
+        }
+
+        .card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+
+        .card h2 {
+            font-size: 1.05rem;
+            margin-bottom: 0.75rem;
+            color: #7dd3fc;
+        }
+
+        .card .hint {
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-bottom: 0.75rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            margin: 0.6rem 0 0.25rem;
+            color: #cbd5e1;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 0.55rem 0.7rem;
+            border-radius: 8px;
+            border: 1px solid #475569;
+            background: #0f172a;
+            color: #e2e8f0;
+            font-size: 0.9rem;
+        }
+
+        input:focus, select:focus {
+            outline: 2px solid #38bdf8;
+            border-color: transparent;
+        }
+
+        button {
+            margin-top: 0.9rem;
+            padding: 0.6rem 1.2rem;
+            border: none;
+            border-radius: 8px;
+            background: #0ea5e9;
+            color: #fff;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #0284c7;
+        }
+
+        button:disabled {
+            background: #475569;
+            cursor: wait;
+        }
+
+        button.secondary {
+            background: #334155;
+        }
+
+        button.secondary:hover {
+            background: #475569;
+        }
+
+        .row {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .row > div {
+            flex: 1;
+            min-width: 140px;
+        }
+
+        .ai-reply {
+            margin-top: 1rem;
+            padding: 0.8rem 1rem;
+            background: #052e3f;
+            border-left: 4px solid #38bdf8;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            display: none;
+        }
+
+        .feedback {
+            margin-top: 0.75rem;
+            font-size: 0.85rem;
+            min-height: 1.2em;
+        }
+
+        .feedback.ok { color: #4ade80; }
+        .feedback.erro { color: #f87171; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0.75rem;
+            font-size: 0.85rem;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 0.5rem 0.6rem;
+            border-bottom: 1px solid #334155;
+        }
+
+        th {
+            color: #7dd3fc;
+            font-weight: 600;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.15rem 0.55rem;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+
+        .badge.GROCERIES { background: #14532d; color: #86efac; }
+        .badge.PHARMA    { background: #4c1d95; color: #d8b4fe; }
+        .badge.AUTO      { background: #7c2d12; color: #fdba74; }
+
+        footer {
+            text-align: center;
+            color: #475569;
+            font-size: 0.78rem;
+            padding: 1.5rem 1rem;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>💰 Budgeting AI</h1>
+    <p>Assistente financeiro com Spring AI + Ollama (modelo local e gratuito)</p>
+</header>
+
+<main>
+    <!-- ============ 1. COMANDO COM IA ============ -->
+    <section class="card">
+        <h2>🤖 Comando com IA</h2>
+        <p class="hint">Escreva em linguagem natural — a IA entende, chama a função real da aplicação e grava/consulta no banco.</p>
+        <label for="aiMessage">Seu comando</label>
+        <input id="aiMessage" type="text" placeholder='Ex.: "gastei 80 reais no mercado" ou "liste meus gastos de farmácia"'>
+        <button id="aiButton" onclick="enviarComandoIA()">Enviar para a IA</button>
+        <div id="aiReply" class="ai-reply"></div>
+    </section>
+
+    <!-- ============ 2. NOVA TRANSAÇÃO (REST) ============ -->
+    <section class="card">
+        <h2>📝 Nova transação (REST)</h2>
+        <p class="hint">Cadastro direto pelo endpoint REST, sem IA. A API armazena o valor em centavos.</p>
+        <div class="row">
+            <div>
+                <label for="descricao">Descrição</label>
+                <input id="descricao" type="text" placeholder="Ex.: Supermercado">
+            </div>
+            <div>
+                <label for="valor">Valor (R$)</label>
+                <input id="valor" type="number" min="0.01" step="0.01" placeholder="80.00">
+            </div>
+            <div>
+                <label for="categoria">Categoria</label>
+                <select id="categoria">
+                    <option value="GROCERIES">GROCERIES — Mercado</option>
+                    <option value="PHARMA">PHARMA — Farmácia</option>
+                    <option value="AUTO">AUTO — Transporte</option>
+                </select>
+            </div>
+        </div>
+        <button onclick="criarTransacao()">Salvar transação</button>
+        <p id="formFeedback" class="feedback"></p>
+    </section>
+
+    <!-- ============ 3. CONSULTAS ============ -->
+    <section class="card">
+        <h2>🔎 Consultar transações</h2>
+        <div class="row">
+            <div>
+                <label for="filtroCategoria">Filtrar por categoria</label>
+                <select id="filtroCategoria">
+                    <option value="GROCERIES">GROCERIES</option>
+                    <option value="PHARMA">PHARMA</option>
+                    <option value="AUTO">AUTO</option>
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div><button class="secondary" onclick="listarPorCategoria()">Buscar por categoria</button></div>
+            <div><button class="secondary" onclick="listarTodas()">Listar todas</button></div>
+        </div>
+        <div id="resultado">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Descrição</th>
+                        <th>Categoria</th>
+                        <th>Valor</th>
+                        <th>ID</th>
+                    </tr>
+                </thead>
+                <tbody id="tabelaCorpo">
+                    <tr><td colspan="4">Nenhuma consulta feita ainda.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<footer>
+    Desafio DIO — Spring Boot + Spring AI (Ollama) • Arquitetura em camadas (domain / application / infrastructure)
+</footer>
+
+<script>
+    const API = '/transactions';
+
+    const formatarMoeda = (centavos) =>
+        (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    // ---------- 1. IA ----------
+    async function enviarComandoIA() {
+        const input = document.getElementById('aiMessage');
+        const botao = document.getElementById('aiButton');
+        const replyBox = document.getElementById('aiReply');
+        const message = input.value.trim();
+
+        if (!message) {
+            replyBox.style.display = 'block';
+            replyBox.textContent = 'Digite um comando antes de enviar.';
+            return;
+        }
+
+        botao.disabled = true;
+        botao.textContent = 'Processando... (modelo local pode demorar)';
+        replyBox.style.display = 'block';
+        replyBox.textContent = '⏳ A IA está pensando...';
+
+        try {
+            const resp = await fetch(`${API}/ai`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message })
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            replyBox.textContent = '🤖 ' + data.reply;
+            input.value = '';
+        } catch (e) {
+            replyBox.textContent = '❌ Erro ao chamar a IA. O Ollama está rodando? (' + e.message + ')';
+        } finally {
+            botao.disabled = false;
+            botao.textContent = 'Enviar para a IA';
+        }
+    }
+
+    // ---------- 2. REST ----------
+    async function criarTransacao() {
+        const descricao = document.getElementById('descricao').value.trim();
+        const valor = parseFloat(document.getElementById('valor').value);
+        const category = document.getElementById('categoria').value;
+        const feedback = document.getElementById('formFeedback');
+
+        if (!descricao || isNaN(valor) || valor <= 0) {
+            feedback.className = 'feedback erro';
+            feedback.textContent = 'Preencha a descrição e um valor maior que zero.';
+            return;
+        }
+
+        try {
+            const resp = await fetch(API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                // a API trabalha com centavos
+                body: JSON.stringify({ description: descricao, category, amount: Math.round(valor * 100) })
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            feedback.className = 'feedback ok';
+            feedback.textContent = `✅ Transação "${data.description}" salva (${formatarMoeda(data.amount)}).`;
+            document.getElementById('descricao').value = '';
+            document.getElementById('valor').value = '';
+        } catch (e) {
+            feedback.className = 'feedback erro';
+            feedback.textContent = '❌ Erro ao salvar: ' + e.message;
+        }
+    }
+
+    // ---------- 3. Consultas ----------
+    function renderizarTabela(lista) {
+        const corpo = document.getElementById('tabelaCorpo');
+        if (!lista.length) {
+            corpo.innerHTML = '<tr><td colspan="4">Nenhuma transação encontrada.</td></tr>';
+            return;
+        }
+        corpo.innerHTML = lista.map(t => `
+            <tr>
+                <td>${t.description}</td>
+                <td><span class="badge ${t.category}">${t.category}</span></td>
+                <td>${formatarMoeda(t.amount)}</td>
+                <td style="font-size:0.7rem;color:#64748b">${t.id}</td>
+            </tr>
+        `).join('');
+    }
+
+    async function listarTodas() {
+        const resp = await fetch(API);
+        renderizarTabela(await resp.json());
+    }
+
+    async function listarPorCategoria() {
+        const categoria = document.getElementById('filtroCategoria').value;
+        const resp = await fetch(`${API}/${categoria}`);
+        renderizarTabela(await resp.json());
+    }
+
+    // Enviar comando de IA com Enter
+    document.getElementById('aiMessage').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') enviarComandoIA();
+    });
+</script>
+
+</body>
+</html>
