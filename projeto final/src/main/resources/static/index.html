@@ -187,7 +187,7 @@
 
 <header>
     <h1>💰 Budgeting AI</h1>
-    <p>Assistente financeiro com Spring AI + Ollama (modelo local e gratuito)</p>
+    <p>Assistente financeiro com Spring AI + Ollama + Whisper — tudo local e gratuito</p>
 </header>
 
 <main>
@@ -199,6 +199,19 @@
         <input id="aiMessage" type="text" placeholder='Ex.: "gastei 80 reais no mercado" ou "liste meus gastos de farmácia"'>
         <button id="aiButton" onclick="enviarComandoIA()">Enviar para a IA</button>
         <div id="aiReply" class="ai-reply"></div>
+    </section>
+
+    <!-- ============ 1b. COMANDO COM IA POR ÁUDIO ============ -->
+    <section class="card">
+        <h2>🎙️ Comando com IA por áudio</h2>
+        <p class="hint">Grave pelo microfone ou envie um arquivo. Um <strong>Whisper local</strong> transcreve o áudio e o texto vai para a IA (Ollama).</p>
+        <div class="row">
+            <div><button id="btnGravar" onclick="alternarGravacao()">🎙️ Gravar</button></div>
+            <div><button class="secondary" onclick="document.getElementById('arquivoAudio').click()">📁 Enviar arquivo de áudio</button></div>
+        </div>
+        <input id="arquivoAudio" type="file" accept="audio/*" style="display:none" onchange="enviarArquivoAudio(this)">
+        <p id="statusGravacao" class="feedback"></p>
+        <div id="audioReply" class="ai-reply"></div>
     </section>
 
     <!-- ============ 2. NOVA TRANSAÇÃO (REST) ============ -->
@@ -272,7 +285,26 @@
     const formatarMoeda = (centavos) =>
         (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-    // ---------- 1. IA ----------
+    // ---------- polling compartilhado (texto e áudio) ----------
+    function acompanharJob(jobId, replyBox, prefixo, onFinish) {
+        const inicio = Date.now();
+        const timer = setInterval(async () => {
+            const segundos = Math.round((Date.now() - inicio) / 1000);
+            replyBox.textContent = `${prefixo}⏳ A IA está pensando... (${segundos}s — modelo local em CPU)`;
+            try {
+                const s = await fetch(`${API}/ai/${jobId}`);
+                if (!s.ok) return;
+                const job = await s.json();
+                if (job.status === 'DONE' || job.status === 'ERROR') {
+                    clearInterval(timer);
+                    replyBox.textContent = prefixo + (job.status === 'DONE' ? '🤖 ' : '❌ ') + job.reply;
+                    if (onFinish) onFinish();
+                }
+            } catch (e) { /* tenta de novo no próximo ciclo */ }
+        }, 3000);
+    }
+
+    // ---------- 1. IA por texto ----------
     async function enviarComandoIA() {
         const input = document.getElementById('aiMessage');
         const botao = document.getElementById('aiButton');
@@ -286,9 +318,9 @@
         }
 
         botao.disabled = true;
-        botao.textContent = 'Processando... (modelo local pode demorar)';
+        botao.textContent = 'Processando...';
         replyBox.style.display = 'block';
-        replyBox.textContent = '⏳ A IA está pensando...';
+        replyBox.textContent = '⏳ Enviando...';
 
         try {
             const resp = await fetch(`${API}/ai`, {
@@ -297,14 +329,83 @@
                 body: JSON.stringify({ message })
             });
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const data = await resp.json();
-            replyBox.textContent = '🤖 ' + data.reply;
+            const { jobId } = await resp.json();
             input.value = '';
+            acompanharJob(jobId, replyBox, '', () => {
+                botao.disabled = false;
+                botao.textContent = 'Enviar para a IA';
+            });
         } catch (e) {
-            replyBox.textContent = '❌ Erro ao chamar a IA. O Ollama está rodando? (' + e.message + ')';
-        } finally {
+            replyBox.textContent = '❌ Erro ao chamar a IA. (' + e.message + ')';
             botao.disabled = false;
             botao.textContent = 'Enviar para a IA';
+        }
+    }
+
+    // ---------- 1b. IA por áudio (gravação + upload) ----------
+    let mediaRecorder = null;
+    let audioChunks = [];
+
+    async function alternarGravacao() {
+        const botao = document.getElementById('btnGravar');
+        const status = document.getElementById('statusGravacao');
+
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            return;
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioChunks = [];
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+            mediaRecorder.onstop = () => {
+                stream.getTracks().forEach(t => t.stop());
+                const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+                enviarAudio(blob, 'comando.webm');
+            };
+            mediaRecorder.start();
+            botao.textContent = '⏹️ Parar e enviar';
+            status.className = 'feedback ok';
+            status.textContent = '🔴 Gravando... fale o comando (ex.: "gastei 30 reais no posto")';
+        } catch (e) {
+            status.className = 'feedback erro';
+            status.textContent = '❌ Sem acesso ao microfone: ' + e.message;
+        }
+    }
+
+    function enviarArquivoAudio(input) {
+        if (input.files && input.files[0]) {
+            enviarAudio(input.files[0], input.files[0].name);
+            input.value = '';
+        }
+    }
+
+    async function enviarAudio(blob, nomeArquivo) {
+        const botao = document.getElementById('btnGravar');
+        const status = document.getElementById('statusGravacao');
+        const replyBox = document.getElementById('audioReply');
+
+        botao.textContent = '🎙️ Gravar';
+        botao.disabled = true;
+        status.textContent = '';
+        replyBox.style.display = 'block';
+        replyBox.textContent = '⏳ Transcrevendo áudio (Whisper local)...';
+
+        try {
+            const form = new FormData();
+            form.append('file', blob, nomeArquivo);
+            const resp = await fetch(`${API}/ai/audio`, { method: 'POST', body: form });
+            const data = await resp.json();
+            if (!resp.ok || data.status === 'ERROR') throw new Error(data.reply || `HTTP ${resp.status}`);
+
+            const prefixo = `📝 Transcrição: "${data.reply}"\n`;
+            replyBox.textContent = prefixo;
+            acompanharJob(data.jobId, replyBox, prefixo, () => { botao.disabled = false; });
+        } catch (e) {
+            replyBox.textContent = '❌ ' + e.message;
+            botao.disabled = false;
         }
     }
 
