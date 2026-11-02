@@ -6,14 +6,17 @@ services:
     volumes:
       - ollama_data:/root/.ollama
 
-  # Whisper local (gratuito): transcreve áudio em texto, como o Whisper da OpenAI
+  # Whisper local (gratuito): whisper.cpp transcreve áudio em texto (como o Whisper da OpenAI).
+  # Requer o modelo baixado no volume whisper_models — ver README, seção "Como executar".
+  # Modelo "base" (141 MB, ~200 MB de RAM). Com RAM sobrando, use "small" (melhor em PT-BR).
   whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest
-    environment:
-      ASR_MODEL: base
-      ASR_ENGINE: faster_whisper
+    image: ghcr.io/ggml-org/whisper.cpp:main
+    entrypoint: whisper-server
+    command: [ "-m", "/models/ggml-base.bin", "--host", "0.0.0.0", "--port", "8080", "--convert" ]
     ports:
-      - "9030:9000"
+      - "9030:8080"
+    volumes:
+      - whisper_models:/models
 
   database:
     image: mysql:9.6
@@ -35,3 +38,5 @@ services:
 volumes:
   ollama_data:
   transaction_data:
+  whisper_models:
+    name: whisper_models

@@ -9,9 +9,9 @@ import org.springframework.web.client.RestClient;
 
 /**
  * Transcrição de áudio usando um Whisper 100% local e gratuito
- * (container openai-whisper-asr-webservice), no lugar do Whisper da OpenAI.
+ * (container whisper.cpp), no lugar do Whisper da OpenAI.
  *
- * Fluxo: áudio (m4a/webm/mp3/wav...) → POST /asr → texto em português.
+ * Fluxo: áudio (m4a/webm/mp3/wav...) → POST /inference → texto em português.
  */
 @Service
 public class WhisperTranscriptionService {
@@ -25,15 +25,12 @@ public class WhisperTranscriptionService {
     /** Recebe o arquivo de áudio e devolve o texto transcrito em português. */
     public String transcribe(Resource audio) {
         var bodyBuilder = new MultipartBodyBuilder();
-        bodyBuilder.part("audio_file", audio);
+        bodyBuilder.part("file", audio);
+        bodyBuilder.part("response_format", "text");
+        bodyBuilder.part("language", "pt");
 
         var text = restClient.post()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/asr")
-                        .queryParam("task", "transcribe")
-                        .queryParam("language", "pt")
-                        .queryParam("output", "txt")
-                        .build())
+                .uri("/inference")
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(bodyBuilder.build())
                 .retrieve()

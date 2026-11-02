@@ -49,12 +49,12 @@ public class TransactionController {
 
     @GetMapping
     public List<TransactionResponse> readAllTransactions() {
-        return listAllTransactionsUseCase.execute().stream().map(TransactionResponse::from).toList();
+        return listAllTransactionsUseCase.executeStructured().stream().map(TransactionResponse::from).toList();
     }
 
     @GetMapping("/{category}")
     public List<TransactionResponse> readTransactionsByCategory(@PathVariable Category category) {
-        return listTransactionsByCategoryUseCase.execute(category).stream().map(TransactionResponse::from).toList();
+        return listTransactionsByCategoryUseCase.executeStructured(category).stream().map(TransactionResponse::from).toList();
     }
 
     /**
